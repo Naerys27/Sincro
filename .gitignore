@@ -1,0 +1,10 @@
+# Datos reales de usuarios — nunca subir (PII en repo público)
+partes_copia_*.json
+*.ORIGINAL_BACKUP.json
+
+# PDFs con datos reales
+*.pdf
+
+# Archivos de prueba y backups locales
+*_test.html
+*_backup.html
