@@ -271,8 +271,9 @@
       if (document.visibilityState === 'visible') syncNow(false);
     });
     global.addEventListener('online', function() { syncNow(false); });
-    document.addEventListener('click', function() {
+    document.addEventListener('click', function(e) {
       if (_status !== 'reauth' || !_meta.connected) return;
+      if (e.target.closest && e.target.closest('.ds-connect-btn')) return; // ya dispara syncConnect() explicito
       if (Date.now() - _lastSilentRetry < 60000) return;
       _lastSilentRetry = Date.now();
       syncNow(false);

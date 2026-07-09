@@ -1,4 +1,4 @@
-const CACHE = 'sincro-v5';
+const CACHE = 'sincro-v6';
 const FILES = [
   'index.html',
   'parte_combustible.html',

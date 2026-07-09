@@ -8,6 +8,12 @@ Los errores históricos anteriores al fork (v91–v103) están consolidados en
 
 ---
 
+## 2026-07-09 — "Reconectar" mostraba "No se pudo conectar con Google" aunque sí sincronizaba
+
+- **Síntoma:** al tocar el botón "Reconectar" (estado `reauth`), el popup de Google se abría y cerraba rápido, saltaba una alerta "No se pudo conectar con Google. Inténtalo de nuevo." — pero el panel pasaba a "Sincronizado con Google Drive · ahora" igualmente.
+- **Causa:** carrera entre dos llamadas a `syncNow()`. El listener de clic global (capture-phase, pensado para "reintento silencioso a caballito del siguiente gesto" en los módulos sin botón explícito) se dispara con CUALQUIER clic mientras `_status === 'reauth'` — incluido el propio clic sobre el botón "Reconectar". Por ser capture-phase se ejecuta ANTES que el `onclick` del botón: arranca un `syncNow(false)` silencioso que marca `_syncing = true`. Cuando a continuación corre `syncConnect() → DriveSync.connect() → syncNow(true, true)` (la llamada explícita con `select_account`), la encuentra ya en curso y se descarta (`_syncing` ya true → `_syncAgain = true`, resuelve con `ok = undefined`), disparando la alerta de error aunque el reintento silencioso de fondo termine sincronizando bien un instante después.
+- **Solución:** el listener global ignora los clics sobre elementos con la clase `ds-connect-btn` (los botones "Conectar con Google" / "Reconectar" en `index.html`, que ya disparan `syncConnect()` explícitamente). Así solo un flujo pide el token en cada clic sobre esos botones.
+
 ## 2026-07-09 — "Conectar con Google" no dejaba elegir cuenta si ya había una sesión activa
 
 - **Síntoma:** en un navegador con una cuenta de Google ya logueada, el botón "Conectar con Google" no mostraba el selector de cuentas — usaba directamente la sesión activa, sin opción de elegir otra.
