@@ -63,6 +63,14 @@ siguiente ciclo de sondeo.)
 sync entre medias, gana la edición con `updatedAt` más reciente (no hay fusión campo a
 campo dentro de un parte). Aceptado: el flujo real es secuencial (móvil → luego PC).
 
+**Borrados — lápidas (añadido tras la primera prueba real):** sin registro de borrados,
+el merge por unión "resucitaba" los partes borrados en otro dispositivo. Solución:
+clave sincronizada `partes_tombstones_v1` — al borrar un registro (partes diarios,
+órdenes, histórico combustible) se anota `clave|id → fecha`; el merge excluye registros
+con lápida más reciente que su `updatedAt` (re-crear después del borrado gana), y las
+lápidas se purgan a los 180 días. Conductores y BD de vehículos quedan en unión pura
+(sin timestamps): limitación conocida, ver `errores.md`.
+
 ## Autenticación y fricción de reconexión
 
 - Script GIS (`https://accounts.google.com/gsi/client`) cargado **solo al conectar o

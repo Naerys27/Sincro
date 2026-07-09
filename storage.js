@@ -1,8 +1,13 @@
 (function(global) {
   'use strict';
 
-  var DATA_KEYS = ['partes_vehiculos_v1', 'partes_conductores_v1', 'cht_parte_servicio_diario_v1', 'cht_orden_reparacion_v1', 'partes_combustible_hist_v1'];
+  var DATA_KEYS = ['partes_vehiculos_v1', 'partes_conductores_v1', 'cht_parte_servicio_diario_v1', 'cht_orden_reparacion_v1', 'partes_combustible_hist_v1', 'partes_tombstones_v1'];
   var HIST_KEY = 'partes_combustible_hist_v1';
+  var TOMB_KEY = 'partes_tombstones_v1';
+  var TOMB_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+  // Colecciones cuyos borrados dejan lapida para que el merge no los resucite
+  var TOMB_TRACKED = { 'cht_parte_servicio_diario_v1': 1, 'cht_orden_reparacion_v1': 1 };
+  TOMB_TRACKED[HIST_KEY] = 1;
 
   var _ready = false;
   var _queue = [];
@@ -39,13 +44,65 @@
     localStorage.setItem(k, JSON.stringify(v));
   }
 
+  function recIds(key, val) {
+    if (!val) return [];
+    if (key === HIST_KEY) return (typeof val === 'object') ? Object.keys(val) : [];
+    return (Array.isArray(val) ? val : []).map(function(p) { return p && p.id; }).filter(Boolean);
+  }
+
+  function loadTombs() {
+    try { return JSON.parse(localStorage.getItem(TOMB_KEY)) || {}; } catch(e) { return {}; }
+  }
+
+  function trackDeletions(key, oldRaw, newRaw) {
+    if (!TOMB_TRACKED[key]) return;
+    var o = null, n = null;
+    try { o = JSON.parse(oldRaw); } catch(e) {}
+    try { n = JSON.parse(newRaw); } catch(e) {}
+    var after = {};
+    recIds(key, n).forEach(function(id) { after[id] = 1; });
+    var tombs = loadTombs();
+    var changed = false;
+    recIds(key, o).forEach(function(id) {
+      if (!after[id]) { tombs[key + '|' + id] = new Date().toISOString(); changed = true; }
+    });
+    Object.keys(after).forEach(function(id) {
+      if (tombs[key + '|' + id]) { delete tombs[key + '|' + id]; changed = true; }
+    });
+    if (changed) localStorage.setItem(TOMB_KEY, JSON.stringify(tombs));
+  }
+
+  function mergeTombs(a, b) {
+    var out = {};
+    var cutoff = Date.now() - TOMB_TTL_MS;
+    [a, b].forEach(function(src) {
+      if (!src || typeof src !== 'object') return;
+      Object.keys(src).forEach(function(k) {
+        var ts = src[k];
+        if (!ts || new Date(ts).getTime() < cutoff) return;
+        if (!out[k] || new Date(ts) > new Date(out[k])) out[k] = ts;
+      });
+    });
+    return out;
+  }
+
+  function tombKeeps(tombs, key, id, rec) {
+    var t = tombs[key + '|' + id];
+    if (!t) return true;
+    return new Date(rec && (rec.updatedAt || rec.createdAt) || 0) > new Date(t);
+  }
+
   function mergeData(file, ls) {
     var result = {};
+    var tombs = mergeTombs(file[TOMB_KEY], ls[TOMB_KEY]);
     var keys = {};
     Object.keys(file).forEach(function(k) { keys[k] = 1; });
     Object.keys(ls).forEach(function(k) { keys[k] = 1; });
     Object.keys(keys).forEach(function(k) {
+      if (k === TOMB_KEY) return;
       var fv = file[k], lv = ls[k];
+      if (fv === undefined) fv = TOMB_TRACKED[k] ? (Array.isArray(lv) ? [] : {}) : undefined;
+      if (lv === undefined) lv = TOMB_TRACKED[k] ? (Array.isArray(fv) ? [] : {}) : undefined;
       if (fv === undefined) { result[k] = lv; return; }
       if (lv === undefined) { result[k] = fv; return; }
       if (k === 'partes_vehiculos_v1') {
@@ -71,9 +128,10 @@
               Object.keys(ph).forEach(function(i) { if (parseInt(i, 10) < n) valid[i] = ph[i]; });
               if (Object.keys(valid).length) win = Object.assign({}, win, { photos: valid });
             }
-            mergedH[rk] = win;
+            if (tombKeeps(tombs, k, rk, win)) mergedH[rk] = win;
           } else {
-            mergedH[rk] = b || a;
+            var only = b || a;
+            if (tombKeeps(tombs, k, rk, only)) mergedH[rk] = only;
           }
         });
         result[k] = mergedH;
@@ -88,11 +146,12 @@
           var prev = m[p.id];
           if (!prev || new Date(p.updatedAt || p.createdAt || 0) >= new Date(prev.updatedAt || prev.createdAt || 0)) m[p.id] = p;
         });
-        result[k] = Object.values(m);
+        result[k] = Object.values(m).filter(function(p) { return tombKeeps(tombs, k, p.id, p); });
       } else {
         result[k] = lv;
       }
     });
+    result[TOMB_KEY] = tombs;
     return result;
   }
 
@@ -121,11 +180,13 @@
     },
 
     setItem: function(key, value) {
+      var oldRaw = TOMB_TRACKED[key] ? localStorage.getItem(key) : null;
       if (_syncActive && key === HIST_KEY) {
         try { lsWrite(key, JSON.parse(value)); } catch(e) { localStorage.setItem(key, value); }
       } else {
         localStorage.setItem(key, value);
       }
+      trackDeletions(key, oldRaw, value);
       notifyWrite();
     },
 

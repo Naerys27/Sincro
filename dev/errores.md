@@ -14,6 +14,13 @@ Los errores históricos anteriores al fork (v91–v103) están consolidados en
 - **Causa:** el filtro de limpieza de cachés antiguas asumía que la app es la única del origen — cierto hasta ahora, falso al convivir dos deploys en el mismo dominio de GitHub Pages.
 - **Solución:** en Sincro, caché renombrada a `sincro-v1` y filtro restringido al propio prefijo: `k.startsWith('sincro-') && k !== CACHE`. **Pendiente:** aplicar el fix equivalente en `prueba` (`k.startsWith('partes-loco-')`) en su próximo deploy; hasta entonces, cada deploy de producción borrará la caché de Sincro (sin pérdida de datos, solo re-descarga).
 
+## 2026-07-09 — Un parte borrado "resucitaba" al sincronizar con otro dispositivo
+
+- **Síntoma:** el usuario borra un parte en el PC; al rato el móvil sigue mostrándolo y, tras sincronizar, el parte reaparece también en el PC. Detectado en la primera prueba real Android↔PC.
+- **Causa:** `mergeData()` hace unión por `id`: "el remoto tiene un registro que el local no tiene" es indistinguible de "otro dispositivo creó un registro nuevo", así que el merge restauraba lo borrado. Hueco de diseño clásico de sincronización sin registro de borrados.
+- **Solución:** lápidas (tombstones) en `storage.js`, clave `partes_tombstones_v1` (sincronizada como una clave de datos más). `setItem` detecta ids desaparecidos en partes diarios, órdenes e histórico de combustible y registra `clave|id → fecha de borrado`; si un id reaparece, su lápida se retira. `mergeData` excluye todo registro cuya lápida sea más reciente que su `updatedAt` (una re-creación posterior gana a la lápida) y fusiona las lápidas quedándose con la más reciente, purgando las de más de 180 días. Regresión: `tests/test_tombstones.js` (8 asserts) + escenario e2e en `test_drivesync.js`.
+- **Limitación conocida aceptada:** conductores y BD de vehículos siguen fusionándose por unión pura (no tienen timestamps por registro) — borrar un conductor de la lista puede reaparecer tras sincronizar hasta que el dedup del siguiente guardado lo limpie. Se abordará solo si molesta en el uso real.
+
 ## 2026-07-09 — Tras conectar Google, el index no mostraba los datos sincronizados hasta recargar
 
 - **Síntoma:** al conectar la cuenta de Google (o al llegar datos de otro dispositivo), la página de inicio seguía mostrando el estado anterior (tarjetas "último registro" vacías/viejas) hasta recargar a mano. Detectado por el usuario en la primera prueba real.

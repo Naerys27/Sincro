@@ -125,6 +125,24 @@ function ok(name, cond) { if (cond) { console.log('PASS', name); pass++; } else 
   await page.waitForFunction(() => DriveSync.getStatus() === 'synced', null, { timeout: 5000 }).catch(() => {});
   ok('token renovado: vuelve a synced', await page.evaluate(() => DriveSync.getStatus()) === 'synced');
 
+  // 6bis. Borrado e2e: borro un parte aqui -> tras el sync, el remoto ya no lo tiene (lapida)
+  const DK = 'cht_parte_servicio_diario_v1';
+  await page.evaluate((DK) => {
+    FSStorage.setItem(DK, JSON.stringify([
+      { id: 'p1', fecha: '2026-07-07', updatedAt: '2026-07-07T10:00:00Z' },
+      { id: 'p2', fecha: '2026-07-08', updatedAt: '2026-07-08T10:00:00Z' }
+    ]));
+  }, DK);
+  await page.waitForTimeout(4000);
+  ok('borrado e2e: los 2 partes suben a Drive', (remote.data[DK] || []).length === 2);
+  await page.evaluate((DK) => {
+    var arr = JSON.parse(localStorage.getItem(DK)).filter(p => p.id !== 'p2');
+    FSStorage.setItem(DK, JSON.stringify(arr)); // usuario borra p2
+  }, DK);
+  await page.waitForTimeout(4000);
+  ok('borrado e2e: el parte borrado desaparece del remoto', (remote.data[DK] || []).length === 1 && remote.data[DK][0].id === 'p1');
+  ok('borrado e2e: la lapida viaja a Drive (el movil lo borrara al sincronizar)', !!(remote.data.partes_tombstones_v1 || {})[DK + '|p2']);
+
   // 6. Archivo borrado en Drive (usuaria borro datos de la app) -> se recrea con el estado local
   remote.exists = false;
   remote.data = {};
