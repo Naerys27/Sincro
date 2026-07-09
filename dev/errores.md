@@ -8,6 +8,12 @@ Los errores históricos anteriores al fork (v91–v103) están consolidados en
 
 ---
 
+## 2026-07-09 — "Conectar con Google" no dejaba elegir cuenta si ya había una sesión activa
+
+- **Síntoma:** en un navegador con una cuenta de Google ya logueada, el botón "Conectar con Google" no mostraba el selector de cuentas — usaba directamente la sesión activa, sin opción de elegir otra.
+- **Causa:** `requestToken()` llamaba a `requestAccessToken({})` para el flujo interactivo, sin especificar `prompt`. GIS interpreta eso como "usa la sesión que haya", saltándose el selector si detecta una cuenta ya logueada (más agresivo aún con FedCM en Chrome moderno).
+- **Solución:** `DriveSync.connect()` (el botón explícito de conectar) ahora limpia cualquier token cacheado en `sessionStorage` y pide el token con `prompt: 'select_account'`, forzando siempre el selector de cuentas. La renovación silenciosa en segundo plano (sondeo, debounce) sigue usando `prompt: 'none'` sin tocar — no debe interrumpir a la usuaria. El reintento tras `reauth` (chip "toca para reconectar") tampoco fuerza selector: es una renovación de la misma cuenta ya conectada, no un cambio de cuenta.
+
 ## 2026-07-09 — Los Service Workers de `prueba` y `Sincro` se borrarían la caché mutuamente
 
 - **Síntoma:** detectado al crear el fork, antes de que llegara a producirse: ambas apps se sirven desde el mismo origen (`naerys27.github.io`) y comparten el almacén de Cache Storage. El `activate` de cada `sw.js` borraba **toda** caché cuyo nombre no coincidiera con la suya (`keys.filter(k => k !== CACHE)`), así que cada actualización de una app destruiría la caché offline de la otra.

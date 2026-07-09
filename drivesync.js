@@ -65,7 +65,7 @@
     return _gisPromise;
   }
 
-  function requestToken(interactive) {
+  function requestToken(interactive, selectAccount) {
     return loadGIS().then(function() {
       return new Promise(function(res, rej) {
         if (!_tokenClient) {
@@ -88,16 +88,20 @@
             rej(new Error('reauth'));
           }
         };
-        _tokenClient.requestAccessToken(interactive ? {} : { prompt: 'none' });
+        _tokenClient.requestAccessToken(
+          selectAccount ? { prompt: 'select_account' } : (interactive ? {} : { prompt: 'none' })
+        );
       });
     });
   }
 
-  function getToken(interactive) {
-    var t = cachedToken();
-    if (t) return Promise.resolve(t);
+  function getToken(interactive, selectAccount) {
+    if (!selectAccount) {
+      var t = cachedToken();
+      if (t) return Promise.resolve(t);
+    }
     if (_tokenPromise) return _tokenPromise;
-    _tokenPromise = requestToken(interactive).then(
+    _tokenPromise = requestToken(interactive, selectAccount).then(
       function(tok) { _tokenPromise = null; return tok; },
       function(e) { _tokenPromise = null; throw e; }
     );
@@ -213,12 +217,12 @@
     console.warn('[DriveSync]', e.message);
   }
 
-  function syncNow(interactive) {
+  function syncNow(interactive, selectAccount) {
     if (!_meta.connected && !interactive) return Promise.resolve();
     if (_syncing) { _syncAgain = true; return Promise.resolve(); }
     _syncing = true;
     var token;
-    return getToken(interactive).then(function(t) {
+    return getToken(interactive, selectAccount).then(function(t) {
       token = t;
       return ensureFileId(token);
     }).then(function(id) {
@@ -284,12 +288,13 @@
 
   var DriveSync = {
     connect: function() {
+      sessionStorage.removeItem(TOKEN_KEY);
       _meta.connected = true;
       _meta.dirty = true;
       saveMeta();
       FSStorage.setSyncActive(true);
       startTimers();
-      return syncNow(true).then(function() { return _status === 'synced'; });
+      return syncNow(true, true).then(function() { return _status === 'synced'; });
     },
 
     disconnect: function() {
