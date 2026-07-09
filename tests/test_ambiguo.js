@@ -41,7 +41,7 @@ const { chromium } = require('playwright');
   let marca = await page.inputValue('#marca');
   let modelo = await page.inputValue('#modelo');
   console.log('matricula:', mat, '| marca:', marca, '| modelo:', modelo);
-  console.log(mat === '111-AAA' && marca === 'FORD' && modelo === 'TRANSIT' ? 'OK' : '*** FALLO: no autocompleto correctamente con match unico ***');
+  console.log(mat === '111-1AAA' && marca === 'FORD' && modelo === 'TRANSIT' ? 'OK' : '*** FALLO: no autocompleto correctamente con match unico ***');
 
   // ===== TEST B: conductor con 2 vehiculos, con historial de partes -> elige el usado mas reciente =====
   console.log('');

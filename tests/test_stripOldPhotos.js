@@ -1,3 +1,5 @@
+// Purga de fotos antiguas de localStorage cuando la sincronizacion esta activa
+// (la copia completa con fotos vive en Drive; mergeData las recupera si hace falta).
 const { chromium } = require('playwright');
 
 (async () => {
@@ -18,118 +20,45 @@ const { chromium } = require('playwright');
     };
   }
 
-  // Stub del File System Access API: archivo en memoria en window.__fileText
-  const stubFS = () => {
-    window.__fileText = '';
-    // IndexedDB falso: el handle con funciones no es clonable por el IDB real
-    const fakeDb = {
-      createObjectStore() {},
-      transaction() {
-        const tx = {
-          objectStore: () => ({
-            put: () => ({}),
-            get: () => { const rq = {}; setTimeout(() => rq.onsuccess && rq.onsuccess({ target: { result: undefined } }), 0); return rq; },
-            delete: () => ({})
-          })
-        };
-        setTimeout(() => tx.oncomplete && tx.oncomplete(), 0);
-        return tx;
-      }
-    };
-    Object.defineProperty(window, 'indexedDB', { value: { open: () => { const r = { result: fakeDb }; setTimeout(() => r.onsuccess && r.onsuccess({ target: { result: fakeDb } }), 0); return r; } } });
-    const handle = {
-      queryPermission: async () => 'granted',
-      requestPermission: async () => 'granted',
-      getFile: async () => ({ text: async () => window.__fileText }),
-      createWritable: async () => ({ write: async (t) => { window.__fileText = t; }, close: async () => {} })
-    };
-    window.showSaveFilePicker = async () => handle;
-    window.showOpenFilePicker = async () => [handle];
-  };
+  const page = await browser.newPage();
+  await page.goto(BASE + '/parte_combustible.html');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForTimeout(300);
 
-  // ===== ESCENARIO A: modo activo (JSON vinculado) =====
-  {
-    const page = await browser.newPage();
-    await page.addInitScript(stubFS);
-    await page.goto(BASE + '/parte_combustible.html');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto(BASE + '/parte_combustible.html');
-    await page.waitForTimeout(300);
+  // ===== ESCENARIO A: sync activo -> setItem purga fotos antiguas SOLO de localStorage =====
+  const rA = await page.evaluate((hist) => {
+    FSStorage.setSyncActive(true);
+    FSStorage.setItem('partes_combustible_hist_v1', JSON.stringify(hist));
+    return JSON.parse(localStorage.getItem('partes_combustible_hist_v1') || '{}');
+  }, mkHist());
+  ok('A: localStorage SIN fotos del mes antiguo (purgadas)', rA[OLD_KEY] && !rA[OLD_KEY].photos);
+  ok('A: localStorage CON fotos del mes reciente', rA[NEW_KEY] && rA[NEW_KEY].photos && !!rA[NEW_KEY].photos['0']);
+  ok('A: el resto de datos del mes antiguo intactos', rA[OLD_KEY] && rA[OLD_KEY].entries.length === 1 && rA[OLD_KEY].entries[0].kms === '100');
 
-    const r = await page.evaluate(async (hist) => {
-      localStorage.setItem('partes_combustible_hist_v1', JSON.stringify(hist));
-      const okSetup = await FSStorage.setup(false);
-      // Escritura via setItem estando activo (dispara purga en la copia LS)
-      FSStorage.setItem('partes_combustible_hist_v1', JSON.stringify(hist));
-      await new Promise(r2 => setTimeout(r2, 200));
-      return {
-        okSetup,
-        file: JSON.parse(window.__fileText || '{}'),
-        ls: JSON.parse(localStorage.getItem('partes_combustible_hist_v1') || '{}'),
-        cacheRead: JSON.parse(FSStorage.getItem('partes_combustible_hist_v1') || '{}')
-      };
-    }, mkHist());
+  // ===== ESCENARIO B: recuperacion en merge — local purgado pero MAS RECIENTE, remoto con fotos =====
+  const rB = await page.evaluate((args) => {
+    const [OLD_KEY2, hist] = args;
+    const remote = { partes_combustible_hist_v1: hist };
+    const purged = JSON.parse(JSON.stringify(hist));
+    delete purged[OLD_KEY2].photos;
+    purged[OLD_KEY2].updatedAt = '2026-07-01T10:00:00Z';
+    purged[OLD_KEY2].entries[0].kms = '150';
+    const merged = FSStorage.mergeData(remote, { partes_combustible_hist_v1: purged });
+    return merged.partes_combustible_hist_v1;
+  }, [OLD_KEY, mkHist()]);
+  ok('B: gana la version editada (kms=150)', rB[OLD_KEY] && rB[OLD_KEY].entries[0].kms === '150');
+  ok('B: las fotos se RECUPERAN del remoto (no se pierden de Drive)', rB[OLD_KEY] && rB[OLD_KEY].photos && !!rB[OLD_KEY].photos['0']);
 
-    ok('A: setup() con archivo simulado funciona', r.okSetup === true);
-    const fh = r.file.partes_combustible_hist_v1 || {};
-    ok('A: el JSON conserva las fotos del mes ANTIGUO', fh[OLD_KEY] && fh[OLD_KEY].photos && !!fh[OLD_KEY].photos['0']);
-    ok('A: el JSON conserva las fotos del mes reciente', fh[NEW_KEY] && fh[NEW_KEY].photos && !!fh[NEW_KEY].photos['0']);
-    ok('A: localStorage SIN fotos del mes antiguo (purgadas)', r.ls[OLD_KEY] && !r.ls[OLD_KEY].photos);
-    ok('A: localStorage CON fotos del mes reciente', r.ls[NEW_KEY] && r.ls[NEW_KEY].photos && !!r.ls[NEW_KEY].photos['0']);
-    ok('A: el resto de datos del mes antiguo intactos en localStorage', r.ls[OLD_KEY] && r.ls[OLD_KEY].entries.length === 1 && r.ls[OLD_KEY].entries[0].kms === '100');
-    ok('A: la app (getItem) sigue viendo TODAS las fotos', r.cacheRead[OLD_KEY] && r.cacheRead[OLD_KEY].photos && !!r.cacheRead[OLD_KEY].photos['0']);
-    await page.close();
-  }
-
-  // ===== ESCENARIO B: recuperacion en merge — registro antiguo purgado en LS pero editado (mas nuevo), archivo con fotos =====
-  {
-    const page = await browser.newPage();
-    await page.addInitScript(stubFS);
-    await page.goto(BASE + '/parte_combustible.html');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto(BASE + '/parte_combustible.html');
-    await page.waitForTimeout(300);
-
-    const r = await page.evaluate(async (args) => {
-      const [OLD_KEY2, hist] = args;
-      // El "archivo" ya contiene el registro antiguo CON fotos
-      window.__fileText = JSON.stringify({ partes_combustible_hist_v1: hist });
-      // localStorage: mismo registro purgado (sin fotos) pero MAS RECIENTE (editado offline)
-      const purged = JSON.parse(JSON.stringify(hist));
-      delete purged[OLD_KEY2].photos;
-      purged[OLD_KEY2].updatedAt = '2026-07-01T10:00:00Z';
-      purged[OLD_KEY2].entries[0].kms = '150';
-      localStorage.setItem('partes_combustible_hist_v1', JSON.stringify(purged));
-      const okSetup = await FSStorage.setup(true);
-      await new Promise(r2 => setTimeout(r2, 200));
-      return { okSetup, file: JSON.parse(window.__fileText || '{}') };
-    }, [OLD_KEY, mkHist()]);
-
-    const fh = r.file.partes_combustible_hist_v1 || {};
-    ok('B: gana la version editada (kms=150)', fh[OLD_KEY] && fh[OLD_KEY].entries[0].kms === '150');
-    ok('B: las fotos se RECUPERAN del archivo (no se pierden del JSON)', fh[OLD_KEY] && fh[OLD_KEY].photos && !!fh[OLD_KEY].photos['0']);
-    await page.close();
-  }
-
-  // ===== ESCENARIO C: sin archivo vinculado, NO se purga nada =====
-  {
-    const page = await browser.newPage();
-    await page.goto(BASE + '/parte_combustible.html');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto(BASE + '/parte_combustible.html');
-    await page.waitForTimeout(300);
-
-    const r = await page.evaluate((hist) => {
-      FSStorage.setItem('partes_combustible_hist_v1', JSON.stringify(hist));
-      return JSON.parse(localStorage.getItem('partes_combustible_hist_v1') || '{}');
-    }, mkHist());
-
-    ok('C: sin JSON vinculado las fotos antiguas se conservan en localStorage', r[OLD_KEY] && r[OLD_KEY].photos && !!r[OLD_KEY].photos['0']);
-    await page.close();
-  }
+  // ===== ESCENARIO C: sin sync activo, NO se purga nada =====
+  const rC = await page.evaluate((hist) => {
+    FSStorage.setSyncActive(false);
+    FSStorage.setItem('partes_combustible_hist_v1', JSON.stringify(hist));
+    return JSON.parse(localStorage.getItem('partes_combustible_hist_v1') || '{}');
+  }, mkHist());
+  ok('C: sin sync las fotos antiguas se conservan en localStorage', rC[OLD_KEY] && rC[OLD_KEY].photos && !!rC[OLD_KEY].photos['0']);
 
   console.log('\n=== RESULTADO:', pass, 'PASS /', fail, 'FAIL ===');
   await browser.close();
   process.exit(fail ? 1 : 0);
 })();
-

@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
 <script>(function(){var t=localStorage.getItem('partes_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark')})();</script>
   <script src="storage.js"></script>
+  <script src="drivesync.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -312,31 +313,30 @@
       <span class="menu-arrow">›</span>
     </a>
     <div class="storage-panel" id="st-panel">
-      <div id="st-nosup" style="display:none;background:#f8f8f8;border:1px solid #dde3ea;border-radius:14px;padding:14px 16px;font-size:12px;color:#5a7184;line-height:1.5">El archivo de datos no está disponible en este navegador. Usa Chrome o Edge para activar esta función.</div>
       <div class="st-warn" id="st-warn">
         <div class="st-warn-hdr">
           <span class="st-warn-ico">⚠️</span>
           <span class="st-warn-title">Datos sin proteger</span>
         </div>
-        <div class="st-warn-desc">Si se borra el historial del navegador se perderán todos los partes guardados. Vincula un archivo externo para mantenerlos seguros.</div>
+        <div class="st-warn-desc">Si se borra el historial del navegador se perderán todos los partes guardados. Conecta tu cuenta de Google para sincronizarlos entre tus dispositivos.</div>
         <div class="st-btns">
-          <button class="storage-action" onclick="setupFile(false)">Crear archivo</button>
-          <button class="storage-action" onclick="setupFile(true)">Abrir existente</button>
+          <button class="storage-action" onclick="syncConnect()">Conectar con Google</button>
         </div>
       </div>
       <div class="st-pend" id="st-pend">
-        <span class="st-pend-ico">🔗</span>
-        <span class="st-pend-lbl">Archivo vinculado.<br>Toca para reconectar.</span>
-        <button class="st-pend-btn" onclick="storageReconnect()">Reconectar</button>
+        <span class="st-pend-ico">☁️</span>
+        <span class="st-pend-lbl">Sesión de Google caducada.<br>Toca para reconectar.</span>
+        <button class="st-pend-btn" onclick="syncConnect()">Reconectar</button>
       </div>
       <div class="st-ok" id="st-ok">
         <span class="storage-dot"></span>
-        <span class="storage-lbl">Datos guardados en archivo externo</span>
-        <button class="storage-action" onclick="storageDisconnect()">Desconectar</button>
+        <span class="storage-lbl" id="st-ok-lbl">Sincronizado con Google Drive</span>
+        <button class="storage-action" onclick="syncDisconnect()">Desconectar</button>
       </div>
     </div>
   </div>
   <a class="export-link" onclick="exportAllData()">↓ exportar copia de todos los datos</a>
+  <a class="export-link" onclick="document.getElementById('import-all-input').click()">↑ importar copia de datos</a>
   <input type="file" id="import-all-input" accept=".json" style="display:none" onchange="importAllData(event)">
   <script>
     FSStorage.init();
@@ -345,45 +345,36 @@
       var warn = document.getElementById('st-warn');
       var ok = document.getElementById('st-ok');
       var pend = document.getElementById('st-pend');
-      if (!FSStorage.isSupported()) {
-        warn.style.display = 'none';
-        ok.style.display = 'none';
-        if (pend) pend.style.display = 'none';
-        var noSup = document.getElementById('st-nosup');
-        if (noSup) noSup.style.display = 'block';
-        return;
-      }
-      if (FSStorage.isActive()) {
-        warn.style.display = 'none';
-        ok.style.display = 'flex';
-        if (pend) pend.style.display = 'none';
-      } else if (FSStorage.isPending()) {
-        warn.style.display = 'none';
-        ok.style.display = 'none';
-        if (pend) pend.style.display = 'flex';
-      } else {
-        warn.style.display = 'flex';
-        ok.style.display = 'none';
-        if (pend) pend.style.display = 'none';
+      var st = DriveSync.getStatus();
+      warn.style.display = st === 'disconnected' ? 'flex' : 'none';
+      pend.style.display = st === 'reauth' ? 'flex' : 'none';
+      ok.style.display = (st === 'synced' || st === 'pending') ? 'flex' : 'none';
+      if (st === 'synced') {
+        document.getElementById('st-ok-lbl').textContent = 'Sincronizado con Google Drive' + fmtLastSync();
+      } else if (st === 'pending') {
+        document.getElementById('st-ok-lbl').textContent = 'Cambios pendientes de sincronizar';
       }
     }
-    function storageReconnect() {
-      FSStorage.reconnect().then(function(ok) { updateStorageUI(); });
+    function fmtLastSync() {
+      var t = DriveSync.lastSyncTime();
+      if (!t) return '';
+      var m = Math.round((Date.now() - t) / 60000);
+      return m < 1 ? ' · ahora' : ' · hace ' + m + ' min';
     }
-    function storageDisconnect() {
-      if (!confirm('¿Desconectar el archivo de datos?\nLos datos quedarán en el archivo pero la app volverá a usar la caché del navegador.')) return;
-      FSStorage.disconnect().then(updateStorageUI);
-    }
-    function setupFile(useExisting) {
-      FSStorage.setup(useExisting).then(function(ok) {
-        if (ok) {
-          updateStorageUI();
-          alert('¡Archivo configurado!\nA partir de ahora los datos se guardan en el archivo seleccionado y no se perderán al borrar el historial.');
-        } else {
-          updateStorageUI();
+    function syncConnect() {
+      DriveSync.connect().then(function(ok) {
+        updateStorageUI();
+        if (!ok && DriveSync.getStatus() === 'reauth') {
+          alert('No se pudo conectar con Google. Inténtalo de nuevo.');
         }
       });
     }
+    function syncDisconnect() {
+      if (!confirm('¿Desconectar de Google Drive?\nLos datos seguirán en este dispositivo y en tu Drive, pero dejarán de sincronizarse.')) return;
+      DriveSync.disconnect();
+      updateStorageUI();
+    }
+    DriveSync.onStatusChange(function() { updateStorageUI(); });
     function updateModuleStats() {
       function fmtFecha(s) {
         if (!s) return '';

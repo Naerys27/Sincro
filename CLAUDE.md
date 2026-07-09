@@ -1,4 +1,9 @@
-# CLAUDE.md — Partes de Locomoción (CHT)
+# CLAUDE.md — Partes de Locomoción (CHT) — fork SINCRO
+
+> **Este repo es el fork de desarrollo de la sincronización con Google Drive.**
+> Producción sigue en el repo `prueba` (https://naerys27.github.io/prueba/).
+> URL de este fork: https://naerys27.github.io/Sincro/ — Service Worker: `sincro-v2`.
+> Diseño, plan y errores de la feature: carpeta `dev/`.
 
 ## Al inicio de cada sesión
 
@@ -23,14 +28,16 @@ PWA (Progressive Web App) para gestionar la documentación del Servicio de Locom
 ## Estructura del proyecto
 
 ```text
-prueba/
-├── index.html                  # Pantalla principal / menú
+Sincro/
+├── index.html                  # Pantalla principal / menú + panel "Sincronización con Google"
 ├── parte_servicio_diario.html  # Módulo partes diarios de vehículos
 ├── parte_combustible.html      # Módulo partes mensuales de combustible
 ├── orden_reparacion.html       # Módulo órdenes de reparación y suministro
-├── storage.js                  # Capa de almacenamiento (localStorage + File System Access API)
-├── sw.js                       # Service Worker (caché offline, versión actual: v102)
+├── storage.js                  # Capa de almacenamiento (localStorage, merge, hooks)
+├── drivesync.js                # Sincronización con Google Drive (appDataFolder)
+├── sw.js                       # Service Worker (caché offline, versión actual: sincro-v2)
 ├── tests/                      # Batería de regresión Playwright — pasar SIEMPRE antes de deploy (tests/README.md)
+├── dev/                        # Diseño, plan y errores.md de la feature de sync
 ├── manifest.json               # Manifiesto PWA
 └── icons/
     ├── icon-192.png
@@ -43,8 +50,8 @@ prueba/
 
 - **HTML/CSS/JS puro** — sin frameworks, sin build tools, sin npm
 - **jsPDF** — generación de PDFs en cliente (incrustado en cada HTML)
-- **File System Access API** — vinculación de archivo JSON externo para persistencia cross-device
-- **IndexedDB** — almacena el file handle entre sesiones (via storage.js)
+- **Google Drive API (`appDataFolder`)** — sincronización Android↔PC por usuaria, sin backend (drivesync.js)
+- **Google Identity Services (GIS)** — OAuth; script oficial cargado bajo demanda solo al conectar/renovar
 - **Service Worker** — caché offline y detección de actualizaciones
 - **PWA** — instalable en móvil y PC via manifest.json
 
@@ -88,13 +95,22 @@ Si no se incrementa, los usuarios seguirán usando la versión cacheada anterior
 
 ## Arquitectura de almacenamiento
 
-`storage.js` expone el objeto global `FSStorage` que actúa como capa de abstracción:
+`storage.js` expone el objeto global `FSStorage` (capa de acceso a datos de los módulos) y
+`drivesync.js` expone `DriveSync` (sincronización). **localStorage es siempre la fuente de
+verdad local** — la app funciona al 100% sin Google.
 
-| Estado | Comportamiento |
+| Estado DriveSync | Comportamiento |
 | --- | --- |
-| Sin archivo vinculado | Lee/escribe en `localStorage` |
-| Archivo vinculado + permiso concedido | Lee/escribe en JSON externo Y en `localStorage` simultáneamente |
-| Archivo vinculado + permiso pendiente | Lee de `localStorage`, muestra banner "Reconectar" |
+| `disconnected` | Solo localStorage (como siempre) |
+| `synced` | localStorage + archivo `partes_datos.json` en el `appDataFolder` de Drive de la usuaria |
+| `pending` | Cambios locales aún sin subir (sin red o en debounce); se reintenta solo |
+| `reauth` | Token caducado y renovación silenciosa fallida; chip discreto "toca para reconectar" (máx. 1/día) |
+
+**Ciclo de sync (drivesync.js):** al cargar la página, al volver a primer plano, al evento
+`online`, sondeo cada 30 s (`POLL_MS`, solo pestaña visible) y tras cada escritura con
+debounce de 3 s (`DEBOUNCE_MS`). Antes de subir siempre se descarga y se pasa por
+`mergeData()` — nunca se pisa el remoto. Token OAuth en `sessionStorage` (por pestaña),
+nunca en localStorage.
 
 **Claves de datos en storage:**
 
@@ -158,11 +174,11 @@ Todos los módulos muestran un modal bottom-sheet con dos botones en fila: "Cerr
 **Todo en un solo HTML por módulo**
 jsPDF se incrusta completo en cada HTML para garantizar funcionamiento offline sin CDN externo. Hace los archivos grandes pero elimina dependencias externas.
 
-**localStorage como fallback siempre activo**
-Incluso con archivo JSON vinculado, se escribe en localStorage simultáneamente. Garantiza que los datos nunca se pierden si el archivo no está disponible.
+**localStorage como fuente de verdad local**
+Todo se escribe primero en localStorage, siempre. Drive es un canal de sincronización, no un requisito: sin red o sin conectar, la app funciona entera.
 
-**File System Access API en vez de sincronización cloud**
-Se descartó OneDrive/Graph API por restricciones de la cuenta corporativa AGE (sin posibilidad de registrar app en Azure). El archivo JSON local es el mecanismo de portabilidad entre dispositivos.
+**Google Drive (`appDataFolder`) en vez de File System Access API**
+El archivo JSON vinculado (mecanismo anterior) no funcionaba en Android. Drive con scope `drive.appdata` (no sensible, sin verificación de Google) da sync Android↔PC por usuaria sin backend. OneDrive/Graph API sigue descartado (cuenta corporativa AGE sin registro de apps en Azure). Ver `dev/2026-07-09-google-drive-sync-design.md`.
 
 **Sin Service Worker scope personalizado**
 El SW cubre `./` para simplicidad. A tener en cuenta si se despliega en subcarpeta de servidor.

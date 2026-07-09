@@ -1,5 +1,19 @@
-# Handover — Partes de Locomoción CHT
-**Fecha:** 2026-07-06 | **SW actual:** `partes-loco-v102` (desplegado 2026-07-03) | **v103 en preparación** (sin desplegar)
+# Handover — Partes de Locomoción CHT — fork SINCRO
+**Fecha:** 2026-07-09 | **SW actual:** `sincro-v2` (sin desplegar) | Fork de `prueba` (v103) para la feature de sincronización Google Drive
+
+---
+
+## SINCRO — Sincronización Google Drive (2026-07-09, implementada, pendiente de prueba real)
+
+Diseño y plan en `dev/`. Suite completa en verde (12 archivos, ~150 asserts).
+
+- **`drivesync.js` (nuevo):** OAuth con GIS bajo demanda + Drive REST con `fetch`; un archivo `partes_datos.json` en `appDataFolder`; ciclo download→merge→upload reutilizando `mergeData()`; disparadores: carga, primer plano, `online`, sondeo 30 s, escritura con debounce 3 s; estados `disconnected/synced/pending/reauth`; chip de reconexión máx. 1/día; Client ID embebido (público por diseño).
+- **`storage.js` reescrito:** retirado el canal File System Access API (sustituido por Drive); `FSStorage` mantiene la API de los módulos (`init/onReady/getItem/setItem`) y añade `mergeData` (ahora pública), `onWrite`, `setSyncActive`, `readAll`, `writeAll`. `stripOldPhotos` purga con sync activo (antes: con archivo vinculado).
+- **`index.html`:** panel "Sincronización con Google" (Conectar/estado/Desconectar) en lugar del panel de archivo; enlace "importar copia de datos" añadido (la función existía pero era inaccesible).
+- **Tests:** `test_drivesync.js` nuevo (14 asserts, Drive simulado con `page.route`); `test_stripOldPhotos.js` reescrito para el modelo nuevo; typo corregido en `test_ambiguo.js` (esperaba `111-AAA` en vez de `111-1AAA`). **Gotcha nuevo documentado en `dev/errores.md`:** tests que cargan `index.html` con `addInitScript` destructivo deben usar `serviceWorkers: 'block'` (el reload por `controllerchange` re-siembra el estado).
+- **Google Cloud:** proyecto `partes-locomocion`, Drive API habilitada, OAuth client "PWA Partes" con orígenes `https://naerys27.github.io` y `http://localhost:8080`. **Verificar que la app está publicada en producción (Público → Publicar la app), no en modo prueba.**
+
+**Pendiente:** push a GitHub (usuario, GitHub Desktop) → prueba E2E real Android↔PC con cuenta de Google del desarrollador durante varios días (medir frecuencia real del aviso de reconexión) → decisión de paso a producción (`prueba`).
 
 ---
 
