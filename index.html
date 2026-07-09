@@ -375,6 +375,7 @@
       updateStorageUI();
     }
     DriveSync.onStatusChange(function() { updateStorageUI(); });
+    DriveSync.onDataChange(function() { updateModuleStats(); });
     function updateModuleStats() {
       function fmtFecha(s) {
         if (!s) return '';

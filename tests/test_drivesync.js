@@ -78,13 +78,14 @@ function ok(name, cond) { if (cond) { console.log('PASS', name); pass++; } else 
   ok('sync inicial: estado synced', await page.evaluate(() => DriveSync.getStatus()) === 'synced');
   ok('sync inicial: dirty limpiado tras subir', await page.evaluate(() => !JSON.parse(localStorage.getItem('drive_sync_meta_v1')).dirty));
 
-  // 2. Cambio remoto (otro dispositivo subio) -> el sondeo lo trae
+  // 2. Cambio remoto (otro dispositivo subio) -> el sondeo lo trae y avisa a la UI
   remote.data = { partes_conductores_v1: ['REMOTO PEREZ', 'LOCAL GARCIA', 'NUEVO DEL MOVIL'] };
   remote.version++;
-  await page.evaluate(() => DriveSync.syncNow());
+  await page.evaluate(() => { window.__dataCb = 0; DriveSync.onDataChange(() => window.__dataCb++); return DriveSync.syncNow(); });
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('partes_conductores_v1')).includes('NUEVO DEL MOVIL'), null, { timeout: 5000 }).catch(() => {});
   const conds2 = await page.evaluate(() => JSON.parse(localStorage.getItem('partes_conductores_v1')));
   ok('cambio remoto: baja al dispositivo en el siguiente sondeo', conds2.includes('NUEVO DEL MOVIL'));
+  ok('cambio remoto: onDataChange avisa a la UI (refresco sin recargar)', await page.evaluate(() => window.__dataCb) >= 1);
 
   // 3. Escritura local -> debounce -> subida automatica
   const upBefore = uploads;

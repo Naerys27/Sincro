@@ -14,6 +14,12 @@ Los errores históricos anteriores al fork (v91–v103) están consolidados en
 - **Causa:** el filtro de limpieza de cachés antiguas asumía que la app es la única del origen — cierto hasta ahora, falso al convivir dos deploys en el mismo dominio de GitHub Pages.
 - **Solución:** en Sincro, caché renombrada a `sincro-v1` y filtro restringido al propio prefijo: `k.startsWith('sincro-') && k !== CACHE`. **Pendiente:** aplicar el fix equivalente en `prueba` (`k.startsWith('partes-loco-')`) en su próximo deploy; hasta entonces, cada deploy de producción borrará la caché de Sincro (sin pérdida de datos, solo re-descarga).
 
+## 2026-07-09 — Tras conectar Google, el index no mostraba los datos sincronizados hasta recargar
+
+- **Síntoma:** al conectar la cuenta de Google (o al llegar datos de otro dispositivo), la página de inicio seguía mostrando el estado anterior (tarjetas "último registro" vacías/viejas) hasta recargar a mano. Detectado por el usuario en la primera prueba real.
+- **Causa:** la sincronización escribe los datos fusionados en localStorage, pero el index ya estaba renderizado y nada re-ejecutaba `updateModuleStats()`. Los módulos no lo sufren porque leen storage al abrirse.
+- **Solución:** `DriveSync.onDataChange(cb)` — drivesync notifica cuando un pull trae cambios remotos (versión distinta), e `index.html` refresca las tarjetas al recibirlo. Assert de regresión añadido a `tests/test_drivesync.js`. Limitación conocida aceptada: un módulo ya abierto con datos en pantalla no re-renderiza su vista si llegan cambios remotos de fondo (se ven al reabrir); se decidirá si merece cableado por módulo tras la prueba real.
+
 ## 2026-07-09 — Test de sync perdía una escritura: el Service Worker recargaba la página a mitad de test
 
 - **Síntoma:** en `tests/test_drivesync.js`, la subida tras el debounce ocurría exactamente 1 vez pero SIN el dato recién escrito; `dirty` quedaba en false y el dato desaparecía también de localStorage. Parecía una carrera de datos en `drivesync.js`.

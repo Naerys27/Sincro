@@ -18,6 +18,7 @@
   var _meta = loadMeta();
   var _status = _meta.connected ? 'pending' : 'disconnected';
   var _statusCbs = [];
+  var _dataCbs = [];
   var _gisPromise = null;
   var _tokenClient = null;
   var _tokenCb = null;
@@ -173,12 +174,18 @@
     });
   }
 
+  function notifyData() {
+    _dataCbs.forEach(function(cb) { try { cb(); } catch(e) {} });
+  }
+
   function pullPush(token, id) {
     return getVersion(token, id).then(function(ver) {
       if (ver === _meta.lastVersion && !_meta.dirty) return;
+      var remoteChanged = ver !== _meta.lastVersion;
       return download(token, id).then(function(remote) {
         var merged = FSStorage.mergeData(remote, FSStorage.readAll());
         FSStorage.writeAll(merged);
+        if (remoteChanged) notifyData();
         var wasDirty = _meta.dirty;
         _meta.lastVersion = ver;
         saveMeta();
@@ -301,7 +308,8 @@
     getStatus: function() { return _status; },
     isConnected: function() { return !!_meta.connected; },
     lastSyncTime: function() { return _meta.lastSync || null; },
-    onStatusChange: function(cb) { _statusCbs.push(cb); }
+    onStatusChange: function(cb) { _statusCbs.push(cb); },
+    onDataChange: function(cb) { _dataCbs.push(cb); }
   };
 
   if (_meta.connected) {
