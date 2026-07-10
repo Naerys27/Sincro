@@ -8,3 +8,6 @@ partes_copia_*.json
 # Archivos de prueba y backups locales
 *_test.html
 *_backup.html
+
+# Documentación interna para dirección — no publicar en el repo
+RESUMEN_CAMBIOS.md
