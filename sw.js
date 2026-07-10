@@ -1,4 +1,4 @@
-const CACHE = 'sincro-v7';
+const CACHE = 'sincro-v8';
 const FILES = [
   'index.html',
   'parte_combustible.html',
@@ -28,7 +28,11 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => caches.match('index.html')))
+    caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => {
+      if (e.request.mode === 'navigate') return caches.match('index.html');
+      throw new Error('offline');
+    }))
   );
 });

@@ -21,7 +21,7 @@ Diseño y plan en `dev/`. Suite completa en verde (12 archivos, ~150 asserts).
 
 PWA funcional desplegada en https://naerys27.github.io/prueba/
 3 módulos: Parte Servicio Diario · Parte Combustible · Orden de Reparación
-Sin backend — almacenamiento en localStorage + File System Access API (archivo JSON opcional).
+Sin backend — almacenamiento en localStorage, sincronizado entre dispositivos vía Google Drive (`appDataFolder`, ver sección SINCRO arriba).
 
 ---
 

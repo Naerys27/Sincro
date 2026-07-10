@@ -1217,18 +1217,23 @@
         var tit = fechaCortaOR(o.fecha) + (o.matricula ? ' · ' + escapeHtmlOR(fmtMat(o.matricula)) : '');
         var meta = escapeHtmlOR((o.marca || '') + (o.vehiculo ? ' ' + o.vehiculo : ''));
         if (o.concepto) meta += (meta ? '<br>' : '') + escapeHtmlOR(o.concepto.substring(0, 80)) + (o.concepto.length > 80 ? '…' : '');
-        html += '<div class="or-saved-item">' +
+        html += '<div class="or-saved-item" data-id="' + escapeHtmlOR(o.id) + '">' +
           '<div class="or-saved-main">' +
             '<div class="or-saved-title">' + escapeHtmlOR(tit) + '</div>' +
             (meta ? '<div class="or-saved-meta">' + meta + '</div>' : '') +
           '</div>' +
           '<div class="or-saved-actions">' +
-            '<button class="mini-btn mini-load" type="button" onclick="loadOrden(\'' + escapeHtmlOR(o.id) + '\')">Cargar</button>' +
-            '<button class="mini-btn mini-del" type="button" onclick="deleteOrden(\'' + escapeHtmlOR(o.id) + '\')">Borrar</button>' +
+            '<button class="mini-btn mini-load" type="button">Cargar</button>' +
+            '<button class="mini-btn mini-del" type="button">Borrar</button>' +
           '</div>' +
         '</div>';
       }
       list.innerHTML = html;
+      Array.prototype.forEach.call(list.querySelectorAll('.or-saved-item'), function(item) {
+        var id = item.getAttribute('data-id');
+        item.querySelector('.mini-load').addEventListener('click', function() { loadOrden(id); });
+        item.querySelector('.mini-del').addEventListener('click', function() { deleteOrden(id); });
+      });
     }
 
     function toggleOrHist() {
