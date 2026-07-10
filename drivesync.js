@@ -324,5 +324,31 @@
     setTimeout(function() { syncNow(false); }, 0);
   }
 
+  // Panel de diagnostico visible en pantalla (sin DevTools/USB) - activar con ?debug=1 en la URL
+  if (location.search.indexOf('debug=1') !== -1) {
+    document.addEventListener('DOMContentLoaded', function() {
+      var pre = document.createElement('pre');
+      pre.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000;color:#0f0;' +
+        'font-size:11px;padding:10px;overflow:auto;white-space:pre-wrap;margin:0;font-family:monospace';
+      function snapshot() {
+        var partes = [];
+        try { partes = JSON.parse(localStorage.getItem('cht_parte_servicio_diario_v1')) || []; } catch(e) {}
+        var meta = {};
+        try { meta = JSON.parse(localStorage.getItem(META_KEY)) || {}; } catch(e) {}
+        return JSON.stringify({
+          status: DriveSync.getStatus(),
+          meta: meta,
+          ultimosPartes: partes.slice(-5).map(function(p) {
+            return { id: p.id, fecha: p.fecha, mat: p.parte_servicio, upd: p.updatedAt };
+          })
+        }, null, 2);
+      }
+      pre.textContent = snapshot();
+      pre.addEventListener('click', function() { pre.remove(); });
+      document.body.appendChild(pre);
+      setInterval(function() { if (document.body.contains(pre)) pre.textContent = snapshot(); }, 2000);
+    });
+  }
+
   global.DriveSync = DriveSync;
 })(window);
